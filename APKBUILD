@@ -2,7 +2,7 @@
 # Contributor: blattersturm <peachypies@protonmail.ch>
 # Maintainer:  frebib <mono-apk@spritsail.io>
 pkgname=mono
-pkgver=5.20.1.19
+pkgver=5.16.1.0
 pkgrel=0
 pkgdesc="Free implementation of the .NET platform including runtime and compiler"
 url="http://www.mono-project.com/"
@@ -34,6 +34,8 @@ subpackages=" \
 "
 source=" \
 	http://download.mono-project.com/sources/mono/mono-${pkgver/_/~}.tar.bz2 \
+	cfx-debug.patch \
+	fix-mono-state.patch
 "
 install="ca-certificates-$pkgname.post-deinstall"
 builddir="$srcdir/$pkgname-$pkgver"
@@ -77,7 +79,9 @@ build() {
 		--with-x=no \
 		--with-libgc=none \
 		--with-mcs-docs=no \
-		--with-ikvm-native=no
+		--with-ikvm-native=no \
+		--with-tls=pthread \
+		--enable-static
 
 	make -j$(nproc)
 }
@@ -480,4 +484,7 @@ dbg() {
 	done
 }
 
-sha512sums="498fffc70c524cf21477196b6fdc3c5d03a719098c0a0ca40c29e239588675ddc0538659e4119171316f8f35555fcd42390d474dff0b795bf67188bc34a35ae0  mono-5.20.1.19.tar.bz2"
+
+sha512sums="069a00cd341a1d86d20759d9700f554e4e6bc140d9087f48f4f5ebc5de19df03283ba1b278dc3259cc05a81d9088fc091c90ddea756b6d804f4791d9e9c77440  mono-5.16.1.0.tar.bz2
+b98ce89f91ba5c3ac08257d482de830626d162d34cf5d32289bed29f3439bb7841f56c6cf884c878ed3db1168298c3527e5590ae0ec078e443de12c978634f08  cfx-debug.patch
+255946de10a72f0acae276e73791e73c786ee9befb73e2691a3583c7f6d5513380a7a30649a1ac435ca5fba65a67891313a81609639ecacad7328f20443b0c4d  fix-mono-state.patch"

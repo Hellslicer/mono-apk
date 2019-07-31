@@ -1,0 +1,120 @@
+--- a/mono/utils/cfx-debug.c
++++ b/mono/utils/cfx-debug.c
+@@ -0,0 +1,105 @@
++﻿#include <config.h>
++#include <mono/metadata/object.h>
++#include <mono/utils/mono-stack-unwinding.h>
++#include <mono/mini/mini.h>
++
++typedef struct  
++{
++	MonoThreadUnwindState* state;
++	gpointer origin;
++} FindContextElementState;
++
++static gboolean find_context_element(StackFrameInfo* frame, MonoContext* ctx, gpointer data)
++{
++	FindContextElementState* s = (FindContextElementState*)data;
++
++	if (MONO_CONTEXT_GET_SP(ctx) > s->origin && (frame->type == FRAME_TYPE_MANAGED || frame->type == FRAME_TYPE_INTERP))
++	{
++		s->state->ctx = *ctx;
++		return TRUE;
++	}
++
++	return FALSE;
++}
++
++MonoLMF* mono_get_lmf(void);
++
++MONO_API MonoArray* mono_get_current_context(gpointer stack_origin)
++{
++	MonoThreadUnwindState cxt;
++	mono_thread_state_init(&cxt);
++
++	FindContextElementState state;
++	state.state = &cxt;
++	state.origin = stack_origin;
++
++	mono_walk_stack_with_state(find_context_element, &cxt, MONO_UNWIND_NONE, &state);
++
++	MonoError error;
++	MonoArray* blob = mono_array_new_checked(mono_domain_get(), mono_get_byte_class(), sizeof(MonoThreadUnwindState), &error);
++	mono_error_assert_ok(&error);
++	mono_value_copy_array(blob, 0, &cxt, sizeof(cxt));
++
++	return blob;
++}
++
++typedef struct {
++	MonoStackWalk func;
++	gpointer user_data;
++	MonoThreadUnwindState* end;
++} StackWalkUserData;
++
++static gboolean
++stack_walk_adapter(MonoStackFrameInfo* frame, MonoContext* ctx, gpointer data)
++{
++	StackWalkUserData* d = (StackWalkUserData*)data;
++
++	if (d->end && MONO_CONTEXT_GET_SP(ctx) > MONO_CONTEXT_GET_SP(&d->end->ctx))
++	{
++		return TRUE;
++	}
++
++	switch (frame->type) {
++	case FRAME_TYPE_DEBUGGER_INVOKE:
++	case FRAME_TYPE_MANAGED_TO_NATIVE:
++	case FRAME_TYPE_TRAMPOLINE:
++	case FRAME_TYPE_INTERP_TO_MANAGED:
++	case FRAME_TYPE_INTERP_TO_MANAGED_WITH_CTX:
++		return FALSE;
++	case FRAME_TYPE_MANAGED:
++	case FRAME_TYPE_INTERP:
++		g_assert(frame->ji);
++		return d->func(frame->actual_method, frame->native_offset, frame->il_offset, frame->managed, d->user_data);
++		break;
++	default:
++		g_assert_not_reached();
++		return FALSE;
++	}
++}
++
++MONO_API void
++	mono_stack_walk_bounded(MonoStackWalk func, MonoArray* startRef, MonoArray* endRef, gpointer user_data)
++{
++	MonoThreadUnwindState* start = NULL, *end = NULL;
++
++	if (startRef != NULL)
++	{
++		uint8_t* startPtr = mono_array_addr(startRef, uint8_t, 0);
++		start = (MonoThreadUnwindState*)startPtr;
++	}
++
++	if (endRef != NULL)
++	{
++		uint8_t* endPtr = mono_array_addr(endRef, uint8_t, 0);
++		end = (MonoThreadUnwindState*)endPtr;
++	}
++
++	StackWalkUserData ud = { func, user_data, end };
++
++	if (start)
++	{
++		start->unwind_data[MONO_UNWIND_DATA_LMF] = (MonoLMF*)(((gsize)(mono_get_lmf())->previous_lmf) & ~(SIZEOF_VOID_P - 1));
++	}
++
++	mono_walk_stack_with_state(stack_walk_adapter, start, MONO_UNWIND_LOOKUP_ALL, &ud);
++}
+--- a/mono/utils/Makefile.am
++++ b/mono/utils/Makefile.am
+@@ -190,7 +190,8 @@ monoutils_sources = \
+ 	refcount.h	\
+ 	w32api.h	\
+ 	unlocked.h	\
+-	ward.h
++	ward.h \
++	cfx-debug.c
+ 
+ arch_sources = 
+ 
